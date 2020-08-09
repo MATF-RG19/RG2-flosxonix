@@ -1,89 +1,4 @@
-#include <GL/glut.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#define TIMER_ID 0
-#define TIMER_INTERVAL 20
-#define UNUSED_ARG(x) ((void)(x))
-
-static int win_width, win_height;
-static bool animation_ongoing = false;
-
-/* Svi moguci pokreti heroja u igri
- */
-typedef enum {
-	PASSIVE,
-	NORTH,
-	EAST,
-	SOUTH,
-	WEST
-} hero_motion; 
-
-/* Informacije o heroju
- */
-typedef struct {
-	float position_x;
-	float position_y;
-	float actual_position_x;
-	float actual_position_y;
-	int size;
-	hero_motion direction;
-	float velocity;
-	bool drawing_wall;
-	bool last_maybe_matrix_check;
-} hero_info;
-
-typedef enum {
-	FIELD,				// nema zida, trebalo bi da bude popunjeno zidom
-	BALL_FIELD,			// ovo je jedina teritorija koja nije popunjena zidom
-	WALL,				// popunjena zidom
-	MAYBE				// jos uvek se gradi zid
-} territory_state;
-
-/* Informacije o loptama
- */
-typedef struct {
-	float position_x;
-	float position_y;
-	float actual_position_x;
-	float actual_position_y;
-	float velocity_x;
-	float velocity_y; // brzina je norma vektora
-	float old_velocity_x;
-	float old_velocity_y; // brzina je norma vektora
-	int velocity_on_last_collision;
-	bool wall_horizontal_collision;
-	bool wall_vertical_collision;
-} ball_info;
-
-/* Informacije o platformi
- */
-typedef struct {
-	int size_x;
-	int size_y;
-} field_info;
-
-static hero_info hero;
-static ball_info ball;
-static field_info field;
-static territory_state **walls_and_territories;
-
-static void game_info_initialization();
-static void deinitialize_game();
-static void update_actual_position();
-static void change_maybes_and_fill();
-static bool collision_detection();
-static bool ball_collision_detection();
-static void set_ball_fields(int x, int y);
-
-static void draw_hero();
-static void draw_field();
-static void draw_ball();
-
-static void on_display(void);
-static void on_keyboard(unsigned char key, int x, int y);
-static void on_reshape(int width, int height);
-static void on_timer(int value);
+#include "./flosXonix.h"
 
 static void test(){
 	for(int i = 0; i < field.size_y * 10; i += 10){
@@ -110,9 +25,9 @@ static void test(){
 	puts("**************");
 }
 
-static void test_field(){
-	int temp_x = hero.position_x * 10;
-	int temp_y = hero.position_y * 10;
+static void test_field_ball(){
+	int temp_x = ball.position_x * 10;
+	int temp_y = ball.position_y * 10;
 	for(int i = temp_y; i < temp_y + 10; ++i){	
 		for(int j = temp_x; j < temp_x + 10; ++j){
 			switch(walls_and_territories[i][j]){
@@ -156,7 +71,7 @@ static void game_info_initialization()
 	ball.velocity_y = ball.velocity_x;
 	ball.velocity_on_last_collision = 1;
 	/* Alokacija i inicijalizacija pojedinih polja za pocetni oblik zida*/
-	walls_and_territories = malloc(sizeof(*walls_and_territories) * field.size_x * field.size_y * 100);
+	walls_and_territories = malloc(sizeof(*walls_and_territories) * field.size_y * 10);
 	if(NULL == walls_and_territories){
 		perror("aloc walls_and_territories");
 		exit(EXIT_FAILURE);
@@ -333,10 +248,11 @@ static void change_maybes_and_fill(){
 		}
 	}
 	/* dfs menheten rastojanje po lopti, postavljanje stanja loptine teritorije */
-	printf("%f , %f\n", ball.position_x, ball.position_y);
-	set_ball_fields((int)ball.position_x, (int)ball.position_y);
+	// debugging
+	//printf("%f , %f\n", ball.position_x, ball.position_y);
+	set_ball_fields((int)(ball.position_x * 10), (int)(ball.position_y * 10));
 
-	test();
+	//test(); // DEBUGGING.
 	/* popunjavanje obicnih polja */
 	for(int i = 0; i < field.size_y * 10; ++i){	
 		for(int j = 0; j < field.size_x * 10; ++j){
@@ -361,8 +277,8 @@ static void change_maybes_and_fill(){
 // NOTE ovde smetaju one vrednosti brzine kretanja heroja sto su izmedju 0.1 i 0.2
 static void set_ball_fields(int x, int y)
 {
-	int temp_x = x * 10;
-	int temp_y = y * 10;
+	int temp_x = x;
+	int temp_y = y;
 	
 	if(walls_and_territories[temp_y][temp_x] == WALL){
 		return;
@@ -371,13 +287,10 @@ static void set_ball_fields(int x, int y)
 		return;
 	}
 	
-	for(int i = temp_y; i < temp_y + 10; ++i){	
-		for(int j = temp_x; j < temp_x + 10; ++j){
-			if(walls_and_territories[i][j] == FIELD){
-				walls_and_territories[i][j] = BALL_FIELD;
-			}
-		}
+	if(walls_and_territories[temp_y][temp_x] == FIELD){
+		walls_and_territories[temp_y][temp_x] = BALL_FIELD;
 	}
+	
 	set_ball_fields(x + 1, y);
 	set_ball_fields(x, y + 1);
 	set_ball_fields(x - 1, y);
@@ -406,12 +319,14 @@ static bool collision_detection()
 
 // TODO 
 // Obrada kolizija izmedju vise lopti
+
+
 static bool ball_collision_detection()
 {
 	/* prilagodjavanje za matricu koja predstavlja postavljene zidove */
 	/* uzima se informacija radi provera buduce pozicije lopte */
-	int temp_x = ((ball.position_x) + ball.velocity_x) * 10 ;
-	int temp_y = ((ball.position_y) + ball.velocity_y) * 10 ;
+	int temp_x = (ball.position_x + ball.velocity_x) * 10 ;
+	int temp_y = (ball.position_y + ball.velocity_y) * 10 ;
 	if(walls_and_territories[temp_y][temp_x] == MAYBE || 
 	/* GAME OVER CASE TODO
 	 * Ovo je za sada ovako, ubaciti mogucnost da se izgubi igra ako se dotakne potencijalni zid
@@ -436,145 +351,69 @@ static bool ball_collision_detection()
 		 * suzbijanje situacije kada je zid 2 puta
 		 * udarena horizontalna/vertikalna strana zida.
 		 */
-		if((walls_and_territories[temp_y + 10][temp_x + 10]) == WALL &&
-		   (walls_and_territories[temp_y - 10][temp_x + 10]) == WALL){
-			if(ball.wall_vertical_collision) ball.velocity_y *= -1;
+		if((walls_and_territories[temp_y + 1][temp_x + 1]) == WALL &&
+		   (walls_and_territories[temp_y - 1][temp_x + 1]) == WALL){
 			ball.wall_vertical_collision = true;
 			ball.wall_horizontal_collision = false;
+			// puts("LEFT");
 		}
 		/****
 		 *  3
 		 *
 		 *  9
 		 ***/
-		else if((walls_and_territories[temp_y + 10][temp_x - 10]) == WALL &&
-			(walls_and_territories[temp_y - 10][temp_x - 10]) == WALL){
-			if(ball.wall_vertical_collision) ball.velocity_y *= -1;
+		else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
+			(walls_and_territories[temp_y - 1][temp_x - 1]) == WALL){
 			ball.wall_vertical_collision = true;
 			ball.wall_horizontal_collision = false;
+			// puts("RIGHT");
 		}
 		/****
 		 *
 		 *
 		 *7 9
 		 ****/
-		else if((walls_and_territories[temp_y - 10][temp_x - 10]) &&
-			(walls_and_territories[temp_y - 10][temp_x + 10])){
-			if(ball.wall_horizontal_collision)
-				ball.velocity_x *= -1;
+		else if((walls_and_territories[temp_y - 1][temp_x - 1]) &&
+			(walls_and_territories[temp_y - 1][temp_x + 1])){
 			ball.wall_vertical_collision = false;
 			ball.wall_horizontal_collision = true;
+			// puts("DOWN");
 		}
 		/***
 		 *1 3
 		 *
 		 ***/
-		else if((walls_and_territories[temp_y + 10][temp_x - 10]) == WALL &&
-			(walls_and_territories[temp_y + 10][temp_x + 10]) == WALL
+		else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
+			(walls_and_territories[temp_y + 1][temp_x + 1]) == WALL
 		){
-			if(ball.wall_horizontal_collision)
-				ball.velocity_x *= -1;
+
 			ball.wall_vertical_collision = false;
 			ball.wall_horizontal_collision = true;
+			// puts("UP");
 		}
 		
-		/*** DEBUG U sluzbi debagovanja
-		 * 123
-		 * 456
-		 * 789
-		 ***
-		else if((temp_x - 10 > 0)&&(temp_y + 10 < field.size_y * 10)){
-			printf("%d", walls_and_territories[temp_y + 10][temp_x - 10]);
-		}else{
-			putchar('x');
-		}
-		if((temp_y + 10 < field.size_y * 10)){
-			printf("%d", walls_and_territories[temp_y + 10][temp_x]);
-		}else{
-			putchar('x');
-		}
-		if((temp_x + 10 < field.size_x * 10)&&(temp_y + 10 < field.size_y * 10)){
-			printf("%d", walls_and_territories[temp_y + 10][temp_x + 10]);
-		}else{
-			putchar('x');
-		}
-		puts("");
-		
-		if((temp_x - 10 > 0)){
-			printf("%d", walls_and_territories[temp_y][temp_x - 10]);
-		}else{
-			putchar('x');
-		}
-		printf("%d", walls_and_territories[temp_y][temp_x]);
-		if((temp_x + 10 < field.size_x * 10)){
-			printf("%d", walls_and_territories[temp_y][temp_x + 10]);
-		}else{
-			putchar('x');
-		}
-		puts("");
-
-		if((temp_x - 10 > 0)&&(temp_y - 10 > 0)){
-			printf("%d", walls_and_territories[temp_y - 10][temp_x - 10]);
-		}else{
-			putchar('x');
-		}
-		if((temp_y - 10 > 0)){
-			printf("%d", walls_and_territories[temp_y - 10][temp_x]);
-		}else{
-			putchar('x');
-		}
-		if((temp_x + 10 < field.size_x * 10)&&(temp_y - 10 > 0)){
-			printf("%d", walls_and_territories[temp_y - 10][temp_x + 10]);
-		}else{
-			putchar('x');
-		}
-		puts("");
-****** DEBUG */
-
-		// vx>0 vy>0 velocity_on_last_collision
-		//  0    0          0
-		//  0    1          1
-		//  1    0          2
-		//  1    1          3
-
-		// 1 3 2 0 Clockwise motion
-		// 2 3 1 0 Counter-Clockwise motion
-		if(ball.velocity_x > 0 && ball.velocity_y > 0){ // 3
-			if(ball.velocity_on_last_collision == 1){
-				ball.velocity_x *= 1;
-				ball.velocity_y *= -1;
-			}else if(ball.velocity_on_last_collision == 2){
-				ball.velocity_x *= -1;
-				ball.velocity_y *= 1;
+		if(ball.wall_vertical_collision) {
+			if(ball.velocity_x > 0 && ball.velocity_y > 0){ 
+					ball.velocity_x *= -1;
+			}else if(ball.velocity_x > 0 && ball.velocity_y < 0){ 
+					ball.velocity_x *= -1;
+			}else if(ball.velocity_x < 0 && ball.velocity_y < 0){ 
+					ball.velocity_x *= -1;
+			}else if(ball.velocity_x < 0 && ball.velocity_y > 0){ 
+					ball.velocity_x *= -1;
 			}
-			ball.velocity_on_last_collision = 3;
-		}else if(ball.velocity_x > 0 && ball.velocity_y < 0){ // 2
-			if(ball.velocity_on_last_collision == 3){
-				ball.velocity_x *= -1;
-				ball.velocity_y *= 1;
-			}else if(ball.velocity_on_last_collision == 0){
-				ball.velocity_x *= 1;
-				ball.velocity_y *= -1;
+		}
+		if(ball.wall_horizontal_collision){
+			if(ball.velocity_x > 0 && ball.velocity_y > 0){ 
+					
+					ball.velocity_y *= -1;
+			}else if(ball.velocity_x > 0 && ball.velocity_y < 0){ 
+					ball.velocity_y *= -1;
+			}else if(ball.velocity_x < 0 && ball.velocity_y < 0){ 
+					ball.velocity_y *= -1;
+			}else if(ball.velocity_x < 0 && ball.velocity_y > 0){ 
+					ball.velocity_y *= -1;
 			}
-			ball.velocity_on_last_collision = 2;
-		}else if(ball.velocity_x < 0 && ball.velocity_y < 0){ // 0
-			if(ball.velocity_on_last_collision == 2){
-				ball.velocity_x *= 1;
-				ball.velocity_y *= -1;
-			}else if(ball.velocity_on_last_collision == 1){
-				ball.velocity_x *= -1;
-				ball.velocity_y *= 1;
-			}
-			ball.velocity_on_last_collision = 0;
-		}else if(ball.velocity_x < 0 && ball.velocity_y > 0){ // 1
-			if(ball.velocity_on_last_collision == 0){
-				ball.velocity_x *= -1;
-				ball.velocity_y *= 1;
-			}else if(ball.velocity_on_last_collision == 3){
-				ball.velocity_x *= 1;
-				ball.velocity_y *= -1;
-			}
-			ball.velocity_on_last_collision = 1;
 		}
 		return true;
 	}
@@ -848,6 +687,8 @@ static void on_timer(int value)
 		glutTimerFunc(TIMER_INTERVAL, on_timer, TIMER_ID);
 		return;
 	}
+	ball.position_x += ball.velocity_x;
+	ball.position_y += ball.velocity_y; 
 	switch(hero.direction){
 		case NORTH:
 			hero.position_y += hero.velocity;
@@ -865,8 +706,6 @@ static void on_timer(int value)
 			break;
 	}
 
-	ball.position_x += ball.velocity_x;
-	ball.position_y += ball.velocity_y; 
 
 	if(collision_detection()){
 		hero.direction = PASSIVE;
