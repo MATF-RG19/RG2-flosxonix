@@ -2,12 +2,14 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <time.h>
 #define TIMER_ID 0
 #define TIMER_INTERVAL 20
 #define UNUSED_ARG(x) ((void)(x))
 
 static int win_width, win_height;
 static bool animation_ongoing = false;
+static int level = 1;
 
 /* Svi moguci pokreti heroja u igri
  */
@@ -62,7 +64,7 @@ typedef struct {
 } field_info;
 
 static hero_info hero;
-static ball_info ball;
+static ball_info *ball;
 static field_info field;
 static territory_state **walls_and_territories;
 
@@ -71,9 +73,10 @@ static void deinitialize_game();
 static void update_actual_position();
 static void change_maybes_and_fill();
 static bool collision_detection();
-static bool ball_collision_detection();
+static void ball_collision_detection();
 static void set_ball_fields(int x, int y);
 static bool is_surrounding(int x, int y, territory_state state);
+static bool is_over();
 
 static void draw_hero();
 static void draw_field();

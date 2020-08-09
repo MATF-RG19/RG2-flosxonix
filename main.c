@@ -1,5 +1,31 @@
 #include "./flosXonix.h"
 
+
+static bool is_over()
+{
+	unsigned int occupied = 0;
+	for(int i = 0; i < field.size_y * 10; i += 10){
+		for(int j = 0; j < field.size_x * 10; j += 10){
+			switch(walls_and_territories[i][j]){
+				case FIELD:
+					// occupied++;
+					break;
+				case WALL:
+					occupied++;
+					break;
+				case MAYBE:
+					break;
+				case BALL_FIELD:
+					break;
+				default:
+					break;
+			}
+		}
+	}
+	// printf("%lf : %d \n ", occupied, occupied/(float)(field.size_x*field.size_y) );
+	return (occupied)/(float)(field.size_x*field.size_y) >= 0.8;
+}
+
 static void test(){
 	for(int i = 0; i < field.size_y * 10; i += 10){
 		for(int j = 0; j < field.size_x * 10; j += 10){
@@ -25,33 +51,6 @@ static void test(){
 	puts("**************");
 }
 
-static void test_field_ball(){
-	int temp_x = ball.position_x * 10;
-	int temp_y = ball.position_y * 10;
-	for(int i = temp_y; i < temp_y + 10; ++i){	
-		for(int j = temp_x; j < temp_x + 10; ++j){
-			switch(walls_and_territories[i][j]){
-				case FIELD:
-					printf("O ");
-					break;
-				case WALL:
-					printf("1 ");
-					break;
-				case MAYBE:
-					printf("v ");
-					break;
-				case BALL_FIELD:
-					printf("B ");
-					break;
-				default:
-					break;
-			}
-		}
-		puts("");
-	}
-	printf("##################################\n");
-}
-
 static void game_info_initialization()
 {
 	field.size_x = 20;
@@ -64,12 +63,21 @@ static void game_info_initialization()
 	hero.direction = PASSIVE;
 	hero.drawing_wall = false;
 	hero.last_maybe_matrix_check = false;
+	// level = 2;
+	srand(time(NULL)); 
+	ball = malloc(sizeof(ball_info) * level);
+	if(NULL == ball) {
+		perror("aloc ball");
+		exit(EXIT_FAILURE);
+	}
+	for(int i = 0; i < level; ++i){
+		ball[i].position_x = rand() % (field.size_x - 3) + 2;
+		ball[i].position_y = rand() % (field.size_y - 3) + 2;
+		ball[i].velocity_x = 0.1;
+		ball[i].velocity_y = ball[i].velocity_x;
+		ball[i].velocity_on_last_collision = 1;
+	}
 	
-	ball.position_x = 2;
-	ball.position_y = 8;
-	ball.velocity_x = 0.1;
-	ball.velocity_y = ball.velocity_x;
-	ball.velocity_on_last_collision = 1;
 	/* Alokacija i inicijalizacija pojedinih polja za pocetni oblik zida*/
 	walls_and_territories = malloc(sizeof(*walls_and_territories) * field.size_y * 10);
 	if(NULL == walls_and_territories){
@@ -97,6 +105,7 @@ static void game_info_initialization()
 
 static void deinitialize_game()
 {
+	free(ball);
 	for(int i = 0; i < field.size_y * 10; ++i){
 		free(walls_and_territories[i]);
 	}
@@ -110,16 +119,18 @@ static void update_actual_position()
 {
 	hero.actual_position_x = (field.size_x - 1) / 2.0 - hero.position_x;
 	hero.actual_position_y = -(field.size_y - 1) / 2.0 + hero.position_y;
-	ball.actual_position_x = (field.size_x - 1) / 2.0 - ball.position_x + 0.5;
-	ball.actual_position_y = -(field.size_y - 1) / 2.0 + ball.position_y - 0.5;
+	for(int i = 0; i < level; ++i){
+		ball[i].actual_position_x = (field.size_x - 1) / 2.0 - ball[i].position_x + 0.5;
+		ball[i].actual_position_y = -(field.size_y - 1) / 2.0 + ball[i].position_y - 0.5;
+	}
 	int temp_x = hero.position_x * 10;
 	int temp_y = hero.position_y * 10;
-	/* TODO dodati novo stanje maybe pored true/false za "moguci" zid
-	 */
+	
 	/* Popunjavanje zida na osnovu pozicije heroja */
 	if(hero.drawing_wall){
 //		animation_ongoing =false;// DEBUGGIN'
-		bool whole_maybe_matrix = true;
+		bool whole_maybe_matrix = true; // inicijalno je maybe celo polje
+		// Analiziranje da li je citavo polje 10x10 maybe
 		for(int i = temp_y; i < temp_y + 10; ++i){	
 			for(int j = temp_x; j < temp_x + 10; ++j){
 				switch(walls_and_territories[i][j]){
@@ -171,7 +182,7 @@ static void update_actual_position()
 		for(int i = temp_y; i < temp_y + 10; ++i){	
 			temp = walls_and_territories[i][temp_x];
 			for(int j = temp_x; j < temp_x + 10; ++j){	
-				if(walls_and_territories[i][j] != temp){ // FIXME da radi samo sa MAYBE i FIELD, a WALL ignorise
+				if(!(walls_and_territories[i][j] == temp || temp == WALL)){ // da radi samo sa MAYBE i FIELD, a WALL ignorise
 					whole_line = false;
 					break;
 				}
@@ -182,7 +193,7 @@ static void update_actual_position()
 			for(int j = temp_x; j < temp_x + 10; ++j){	
 				temp = walls_and_territories[temp_y][j];
 				for(int i = temp_y; i < temp_y + 10; ++i){	
-					if(walls_and_territories[i][j] != temp){ // FIXME kao gore navedeno
+					if(!(walls_and_territories[i][j] == temp || temp == WALL)){ //  kao gore navedeno
 					// GAME OVER case 
 					// cosak potencijalnog zida sa nekim drugim se sudara
 						deinitialize_game();
@@ -236,7 +247,16 @@ static void update_actual_position()
 		hero.drawing_wall = false;
 		change_maybes_and_fill();
 	}
+	// GAME OVER victory case 
+	if(is_over()){
+		animation_ongoing = false;
+		level++;
+		deinitialize_game();
+		game_info_initialization();
+	}
 	// test(); // DEBUGGIN'
+
+	
 }
 
 static void change_maybes_and_fill(){
@@ -249,9 +269,11 @@ static void change_maybes_and_fill(){
 	}
 	/* dfs menheten rastojanje po lopti, postavljanje stanja loptine teritorije */
 	// debugging
-	//printf("%f , %f\n", ball.position_x, ball.position_y);
-	set_ball_fields((int)(ball.position_x * 10), (int)(ball.position_y * 10));
-
+	//printf("%f , %f\n", ball[i].position_x, ball[i].position_y);
+	
+	for(int i = 0; i < level; ++i){
+		set_ball_fields((int)(ball[i].position_x * 10), (int)(ball[i].position_y * 10));
+	}
 	//test(); // DEBUGGING.
 	/* popunjavanje obicnih polja */
 	for(int i = 0; i < field.size_y * 10; ++i){	
@@ -273,8 +295,6 @@ static void change_maybes_and_fill(){
 	}
 }
 
-// FIXME Zna da pretera(crta gde ne treba), problem je tip podataka argumenata verovatno(zaokruzivanje)
-// NOTE ovde smetaju one vrednosti brzine kretanja heroja sto su izmedju 0.1 i 0.2
 static void set_ball_fields(int x, int y)
 {
 	int temp_x = x;
@@ -320,104 +340,154 @@ static bool collision_detection()
 // TODO 
 // Obrada kolizija izmedju vise lopti
 
-
-static bool ball_collision_detection()
+static void ball_collision_detection()
 {
 	/* prilagodjavanje za matricu koja predstavlja postavljene zidove */
 	/* uzima se informacija radi provera buduce pozicije lopte */
-	int temp_x = (ball.position_x + ball.velocity_x) * 10 ;
-	int temp_y = (ball.position_y + ball.velocity_y) * 10 ;
-	if(walls_and_territories[temp_y][temp_x] == MAYBE || 
-	/* GAME OVER CASE TODO
-	 * Ovo je za sada ovako, ubaciti mogucnost da se izgubi igra ako se dotakne potencijalni zid
-	 * ili da neko vreme dok ne postane potencijalni zid - pravi zid
-	 */
-	   walls_and_territories[temp_y][temp_x] == WALL){
-		/* Resavanje iscrtavanja ulaska lopte u koliziju */
-		ball.position_x -=   ball.velocity_x;
-		ball.position_y -=   ball.velocity_y;
-		/* Gledanje situacije pre nego sto je lopta usla u koliziju*/
-		temp_x -= ball.velocity_x * 10;
-		temp_y -= ball.velocity_y * 10;
+	int temp_x, temp_y;
+	
+	for(int i = 0; i < level; ++i){
+		temp_x = (ball[i].position_x + ball[i].velocity_x) * 10 ;
+		temp_y = (ball[i].position_y + ball[i].velocity_y) * 10 ;
+		if(walls_and_territories[temp_y][temp_x] == MAYBE){
+			deinitialize_game();
+			game_info_initialization();
+		}
+		/*
+		* Ovo je za sada ovako, ubaciti mogucnost da se izgubi igra ako se dotakne potencijalni zid
+		*/
+		if(walls_and_territories[temp_y][temp_x] == WALL){
+			/* Resavanje iscrtavanja ulaska lopte u koliziju */
+			ball[i].position_x -=   ball[i].velocity_x;
+			ball[i].position_y -=   ball[i].velocity_y;
+			/* Gledanje situacije pre nego sto je lopta usla u koliziju*/
+			temp_x -= ball[i].velocity_x * 10;
+			temp_y -= ball[i].velocity_y * 10;
 
-		/****
-		 *1
-		 *
-		 *7
-		 ***/
+			/****
+			 *1
+			*
+			*7
+			***/
 
-		/* Gledanje slucajeva kada je
-		 * lopta udarila u horizontalnu/vertikalnu stranu zida
-		 * suzbijanje situacije kada je zid 2 puta
-		 * udarena horizontalna/vertikalna strana zida.
-		 */
-		if((walls_and_territories[temp_y + 1][temp_x + 1]) == WALL &&
-		   (walls_and_territories[temp_y - 1][temp_x + 1]) == WALL){
-			ball.wall_vertical_collision = true;
-			ball.wall_horizontal_collision = false;
-			// puts("LEFT");
-		}
-		/****
-		 *  3
-		 *
-		 *  9
-		 ***/
-		else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
-			(walls_and_territories[temp_y - 1][temp_x - 1]) == WALL){
-			ball.wall_vertical_collision = true;
-			ball.wall_horizontal_collision = false;
-			// puts("RIGHT");
-		}
-		/****
-		 *
-		 *
-		 *7 9
-		 ****/
-		else if((walls_and_territories[temp_y - 1][temp_x - 1]) &&
-			(walls_and_territories[temp_y - 1][temp_x + 1])){
-			ball.wall_vertical_collision = false;
-			ball.wall_horizontal_collision = true;
-			// puts("DOWN");
-		}
-		/***
-		 *1 3
-		 *
-		 ***/
-		else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
-			(walls_and_territories[temp_y + 1][temp_x + 1]) == WALL
-		){
+			/* Gledanje slucajeva kada je
+			* lopta udarila u horizontalnu/vertikalnu stranu zida
+			* suzbijanje situacije kada je zid 2 puta
+			* udarena horizontalna/vertikalna strana zida.
+			*/
+			if((walls_and_territories[temp_y + 1][temp_x + 1]) == WALL &&
+			(walls_and_territories[temp_y - 1][temp_x + 1]) == WALL){
+				ball[i].wall_vertical_collision = true;
+				ball[i].wall_horizontal_collision = false;
+				// puts("LEFT");
+			}
+			/****
+			 *  3
+			 *
+			 *  9
+			 ***/
+			else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
+				(walls_and_territories[temp_y - 1][temp_x - 1]) == WALL){
+				ball[i].wall_vertical_collision = true;
+				ball[i].wall_horizontal_collision = false;
+				// puts("RIGHT");
+			}
+			/****
+			 *
+			 *
+			 *7 9
+			****/
+			else if((walls_and_territories[temp_y - 1][temp_x - 1]) &&
+				(walls_and_territories[temp_y - 1][temp_x + 1])){
+				ball[i].wall_vertical_collision = false;
+				ball[i].wall_horizontal_collision = true;
+				// puts("DOWN");
+			}
+			/***
+			 *1 3
+			*
+			***/
+			else if((walls_and_territories[temp_y + 1][temp_x - 1]) == WALL &&
+				(walls_and_territories[temp_y + 1][temp_x + 1]) == WALL
+			){
 
-			ball.wall_vertical_collision = false;
-			ball.wall_horizontal_collision = true;
-			// puts("UP");
-		}
-		
-		if(ball.wall_vertical_collision) {
-			if(ball.velocity_x > 0 && ball.velocity_y > 0){ 
-					ball.velocity_x *= -1;
-			}else if(ball.velocity_x > 0 && ball.velocity_y < 0){ 
-					ball.velocity_x *= -1;
-			}else if(ball.velocity_x < 0 && ball.velocity_y < 0){ 
-					ball.velocity_x *= -1;
-			}else if(ball.velocity_x < 0 && ball.velocity_y > 0){ 
-					ball.velocity_x *= -1;
+				ball[i].wall_vertical_collision = false;
+				ball[i].wall_horizontal_collision = true;
+				// puts("UP");
+			}
+			
+			if(ball[i].wall_vertical_collision) {
+				if(ball[i].velocity_x > 0 && ball[i].velocity_y > 0){ 
+						ball[i].velocity_x *= -1;
+				}else if(ball[i].velocity_x > 0 && ball[i].velocity_y < 0){ 
+						ball[i].velocity_x *= -1;
+				}else if(ball[i].velocity_x < 0 && ball[i].velocity_y < 0){ 
+						ball[i].velocity_x *= -1;
+				}else if(ball[i].velocity_x < 0 && ball[i].velocity_y > 0){ 
+						ball[i].velocity_x *= -1;
+				}
+			}
+			if(ball[i].wall_horizontal_collision){
+				if(ball[i].velocity_x > 0 && ball[i].velocity_y > 0){ 
+						
+						ball[i].velocity_y *= -1;
+				}else if(ball[i].velocity_x > 0 && ball[i].velocity_y < 0){ 
+						ball[i].velocity_y *= -1;
+				}else if(ball[i].velocity_x < 0 && ball[i].velocity_y < 0){ 
+						ball[i].velocity_y *= -1;
+				}else if(ball[i].velocity_x < 0 && ball[i].velocity_y > 0){ 
+						ball[i].velocity_y *= -1;
+				}
 			}
 		}
-		if(ball.wall_horizontal_collision){
-			if(ball.velocity_x > 0 && ball.velocity_y > 0){ 
-					
-					ball.velocity_y *= -1;
-			}else if(ball.velocity_x > 0 && ball.velocity_y < 0){ 
-					ball.velocity_y *= -1;
-			}else if(ball.velocity_x < 0 && ball.velocity_y < 0){ 
-					ball.velocity_y *= -1;
-			}else if(ball.velocity_x < 0 && ball.velocity_y > 0){ 
-					ball.velocity_y *= -1;
-			}
-		}
-		return true;
 	}
-	return false;
+	for(int i = 0; i < level; ++i){
+		for(int j = i + 1; j < level; ++j){
+			if(abs(ball[i].position_x - ball[j].position_x) < 0.001 && abs(ball[i].position_y - ball[j].position_y) < 0.001){
+				ball[i].position_x -=   2*ball[i].velocity_x;
+				ball[i].position_y -=   2*ball[i].velocity_y;
+				ball[j].position_x -=   2*ball[j].velocity_x;
+				ball[j].position_y -=   2*ball[j].velocity_y;
+				if((ball[i].velocity_x < 0 &&
+					ball[j].velocity_x > 0 ||
+					ball[i].velocity_x > 0 &&
+					ball[j].velocity_x < 0) &&
+					(ball[i].velocity_y < 0 &&
+					ball[j].velocity_y < 0 ||
+					ball[i].velocity_y > 0 &&
+					ball[j].velocity_y > 0)
+				) {
+					ball[i].velocity_x *= -1;
+					// ball[i].velocity_y *= -1;
+					ball[j].velocity_x *= -1;
+					// ball[j].velocity_y *= -1;
+
+				}
+				else if((ball[i].velocity_y < 0 &&
+					ball[j].velocity_y > 0 ||
+					ball[i].velocity_y > 0 &&
+					ball[j].velocity_y < 0) &&
+				   (ball[i].velocity_x < 0 &&
+					ball[j].velocity_x < 0 ||
+					ball[i].velocity_x > 0 &&
+					ball[j].velocity_x > 0)
+				) {
+					// ball[i].velocity_x *= -1;
+					ball[i].velocity_y *= -1;
+					// ball[j].velocity_x *= -1;
+					ball[j].velocity_y *= -1;
+
+				}else{
+					ball[i].velocity_x *= -1;
+					ball[i].velocity_y *= -1;
+					ball[j].velocity_x *= -1;
+					ball[j].velocity_y *= -1;
+
+				}
+							
+			}
+		}
+	}
 }
 
 /* Iscrtavanja komponenti iz igrice, podesavanje refleksija svetlosti */
@@ -439,18 +509,24 @@ static void draw_hero()
 
 static void draw_ball()
 {
+	update_actual_position();
 	glMatrixMode(GL_MODELVIEW);
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0); 
-	GLfloat ambient_coeffs[] = {0.1, 0.8, 0.1, 1};
-	GLfloat diffuse_coeffs[] = {0, 1, 0, 1};
-	glMaterialfv(GL_FRONT, GL_AMBIENT, ambient_coeffs);
-	glMaterialfv(GL_FRONT, GL_DIFFUSE, diffuse_coeffs);
-	update_actual_position();
-	glPushMatrix();
-		glTranslatef(ball.actual_position_x, ball.actual_position_y, -1);
-		glutSolidSphere(0.5, 20, 20);
-	glPopMatrix();
+	for(int i = 0; i < level; ++i){
+		GLfloat ambient_coeffs[] = {((level-i + 1)/(float)level),
+									((level-i + 1)/(float)level), 
+									((i + 1)/(float)level), 
+									1};
+		GLfloat diffuse_coeffs[] = {0.1, 0.5 , 0.2, 1};
+		glMaterialfv(GL_FRONT, GL_AMBIENT, ambient_coeffs);
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, diffuse_coeffs);
+	
+		glPushMatrix();
+			glTranslatef(ball[i].actual_position_x, ball[i].actual_position_y, -1);
+			glutSolidSphere(0.5, 20, 20);
+		glPopMatrix();
+	}
 }
 
 void draw_wall_part()
@@ -655,6 +731,20 @@ static void on_keyboard(unsigned char key, int x, int y)
 			deinitialize_game();
 			game_info_initialization();
 			break;
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+		case '0':
+			deinitialize_game();
+			level = key - '0';
+			game_info_initialization();
+			break;
 		default:
 			break;
 	}
@@ -687,8 +777,11 @@ static void on_timer(int value)
 		glutTimerFunc(TIMER_INTERVAL, on_timer, TIMER_ID);
 		return;
 	}
-	ball.position_x += ball.velocity_x;
-	ball.position_y += ball.velocity_y; 
+	
+	for(int i = 0; i < level; ++i){
+		ball[i].position_x += ball[i].velocity_x;
+		ball[i].position_y += ball[i].velocity_y; 
+	}
 	switch(hero.direction){
 		case NORTH:
 			hero.position_y += hero.velocity;
